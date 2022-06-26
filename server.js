@@ -6,6 +6,7 @@ const DbConnect = require("./database");
 const router = require("./routes");
 const path = require("path");
 const cookieParser = require("cookie-parser");
+const roomsModel = require("./models/roomsModel");
 const PORT = process.env.PORT || 8000;
 const server = require("http").createServer(app);
 
@@ -42,10 +43,18 @@ DbConnect();
 const socketUserMapping = {};
 
 io.on("connection", (socket) => {
-  console.log("new socket Connection", socket.id);
-
-  socket.on("join", ({ roomId, user }) => {
+  socket.on("join", async ({ roomId, user }) => {
     socketUserMapping[socket.id] = user;
+    const room = await roomsModel.findById(roomId);
+    if (room.speakers.length > 0) {
+      const existingUser = room.speakers.filter(
+        (item) => item.toString() === user.id.toString()
+      );
+      if (!existingUser.length) {
+        room.speakers = [...room.speakers, user.id];
+        await room.save();
+      }
+    }
     const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
     clients.forEach((client) => {
       io.to(client).emit("add_peer", {
@@ -95,7 +104,7 @@ io.on("connection", (socket) => {
   // leaving the room
   const leaveRoom = () => {
     const { rooms } = socket;
-    Array.from(rooms).forEach((room) => {
+    Array.from(rooms).forEach(async (room) => {
       const clients = Array.from(io.sockets.adapter.rooms.get(room) || []);
       clients.forEach((client) => {
         io.to(client).emit("remove_peer", {
@@ -107,10 +116,24 @@ io.on("connection", (socket) => {
           userId: socketUserMapping[client]?.id,
         });
       });
+      if (room.length > 20) {
+        const roomInDb = await roomsModel.findById(room);
+        if (roomInDb) {
+          if (roomInDb.speakers.length > 1) {
+            roomInDb.speakers = roomInDb.speakers.filter(
+              (speaker) =>
+                speaker.toString() !==
+                socketUserMapping[socket.id]?.id.toString()
+            );
+            await roomInDb.save();
+          } else {
+            await roomInDb.remove();
+          }
+          delete socketUserMapping[socket.id];
+        }
+      }
       socket.leave(room);
     });
-
-    delete socketUserMapping[socket.id];
   };
   socket.on("leave", leaveRoom);
   socket.on("disconnecting", leaveRoom);

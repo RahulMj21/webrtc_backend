@@ -4,12 +4,13 @@ const authController = require("./controllers/authController");
 const roomsController = require("./controllers/roomsController");
 const checkAuth = require("./middlewares/checkAuth");
 
-router.get("/", (req, res) => {
+router.get("/", (_, res) => {
   res.status(200).send("<h1>Welcome to our webrtc project🚀🚀</h1>");
 });
 
 // Auth
-router.post("/api/send-otp", authController.sendOtp);
+router.post("/api/send-phone-otp", authController.sendPhoneOtp);
+router.post("/api/send-email-otp", authController.sendEmailOtp);
 router.post("/api/verify-otp", authController.verifyOtp);
 router.post("/api/activate-user", checkAuth, activateController.activate);
 router.get("/api/refresh", authController.refresh);

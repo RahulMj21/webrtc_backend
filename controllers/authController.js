@@ -2,10 +2,11 @@ const otpServices = require("../services/otpServices");
 const hasServices = require("../services/hasServices");
 const UserServices = require("../services/userServices");
 const TokenServices = require("../services/tokenServices");
+const mailService = require("../services/mailService");
 const UserDto = require("../dtos/userDto");
 
 class AuthController {
-  async sendOtp(req, res) {
+  async sendPhoneOtp(req, res) {
     const phone = req.body.phone;
     const otp = otpServices.generateOtp();
     const ttl = 1000 * 60 * 2;
@@ -23,7 +24,38 @@ class AuthController {
       res.json({
         hash: `${hash}.${expires}`,
         phone,
-        otp,
+      });
+    } catch (err) {
+      console.log(err);
+      res.status(500).json({ message: "message sending failed", err });
+    }
+  }
+  async sendEmailOtp(req, res) {
+    const email = req.body.email;
+    if (!email) {
+      return res.status(400).json({ message: "please provide an valid email" });
+    }
+    const otp = otpServices.generateOtp();
+    const ttl = 1000 * 60 * 20;
+    const expires = Date.now() + ttl;
+    const data = `${email}.${otp}.${expires}`;
+    const hash = hasServices.generateHash(data);
+    // send otp
+    try {
+      const input = {
+        to: email,
+        subject: "email confirmation with OTP from webrtc",
+        html: `<p>OTP is : ${otp}</p>`,
+      };
+      const info = await mailService.sendMail(input);
+      if (!info) return res.status(500).json("Oops.. something went wrong");
+      res.status(200).json({
+        success: true,
+        message: "an otp has been sent to your email",
+        data: {
+          hash: `${hash}.${expires}`,
+          email,
+        },
       });
     } catch (err) {
       console.log(err);
@@ -31,19 +63,23 @@ class AuthController {
     }
   }
   async verifyOtp(req, res) {
-    const { phone, otp, hash } = req.body;
+    const { otp, hash } = req.body;
+    const email = req.body.email ? req.body.email : null;
+    const phone = req.body.phone ? req.body.phone : null;
+    if ((!email && !phone) || !hash)
+      return res.status(500).json({ message: "Oops..something went wrong" });
 
-    if (!phone || !otp || !hash) {
-      return res.status(500).json({ message: "Something went wrong" });
-    }
+    if (!otp) return res.status(409).json({ message: "otp is required" });
 
     const [actualHash, expires] = hash.split(".");
 
     if (Date.now() > expires) {
-      return res.status(400).json({ message: "OTP has expired..." });
+      return res.status(400).json({ message: "OTP has been expired..." });
     }
+    const userPreference = phone ? phone : email;
 
-    const data = `${phone}.${otp}.${expires}`;
+    const data = `${userPreference}.${otp}.${expires}`;
+
     const isvalid = otpServices.validateOtp(actualHash, data);
 
     if (!isvalid) {
@@ -51,24 +87,26 @@ class AuthController {
     }
 
     // find or create user
-    let user = null;
-
+    let user;
     try {
-      user = await UserServices.findUser({ phone });
+      let input;
+      phone ? (input = { phone }) : (input = { email });
+
+      user = await UserServices.findUser(input);
       if (!user) {
-        user = await UserServices.createUser({ phone });
+        user = await UserServices.createUser(input);
       }
       // generate cookies
-      const { accessToken, refreshToken } = await TokenServices.generateTokens({
+      const { accessToken, refreshToken } = TokenServices.generateTokens({
         _id: user._id,
       });
       // set cookies
       res.cookie("refreshToken", refreshToken, {
-        maxAge: 1000 * 60 * 60 * 24 * 30,
+        maxAge: 1000 * 60 * 60 * 24 * 30 * 365,
         httpOnly: true,
       });
       res.cookie("accessToken", accessToken, {
-        maxAge: 1000 * 60 * 60 * 24 * 30,
+        maxAge: 1000 * 60 * 60 * 24 * 30 * 365,
         httpOnly: true,
       });
 
@@ -89,7 +127,7 @@ class AuthController {
       }
 
       // DTO - [Data Transfer Object] : by this we remove all the unnecessery fields from data
-      const userDto = await new UserDto(user);
+      const userDto = new UserDto(user);
 
       //send response
       res.json({ accessToken, user: userDto });
@@ -139,7 +177,7 @@ class AuthController {
 
     // generate new tokens
     try {
-      const { accessToken, refreshToken } = await TokenServices.generateTokens({
+      const { accessToken, refreshToken } = TokenServices.generateTokens({
         _id: user._id,
       });
       //update token in the db
@@ -149,11 +187,11 @@ class AuthController {
       });
       // send the cookies to the browser
       res.cookie("accessToken", accessToken, {
-        maxAge: 1000 * 60 * 60 * 24 * 30,
+        maxAge: 1000 * 60 * 60 * 24 * 30 * 365,
         httpOnly: true,
       });
       res.cookie("refreshToken", refreshToken, {
-        maxAge: 1000 * 60 * 60 * 24 * 30,
+        maxAge: 1000 * 60 * 60 * 24 * 30 * 365,
         httpOnly: true,
       });
 

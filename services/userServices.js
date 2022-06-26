@@ -1,4 +1,4 @@
-const UserModel = require("../models/dbmodel");
+const UserModel = require("../models/userModel");
 class UserServices {
   findUser(filter) {
     return UserModel.findOne(filter);

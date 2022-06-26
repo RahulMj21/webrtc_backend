@@ -20,7 +20,7 @@ class OtpServices {
 
   validateOtp(actualHash, data) {
     const hashedData = hashServices.generateHash(data);
-    return actualHash === hashedData;
+    return actualHash.toString() === hashedData.toString();
   }
 }
 
