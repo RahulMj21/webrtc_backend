@@ -5,6 +5,7 @@ const cors = require("cors");
 const DbConnect = require("./database");
 const router = require("./routes");
 const path = require("path");
+const os = require("os");
 const cookieParser = require("cookie-parser");
 const roomsModel = require("./models/roomsModel");
 const PORT = process.env.PORT || 8000;
@@ -138,7 +139,6 @@ io.on("connection", (socket) => {
   socket.on("leave", leaveRoom);
   socket.on("disconnecting", leaveRoom);
 });
-
 // app listner
 server.listen(PORT, () =>
   console.log(`server is running on http://localhost:${PORT}`)
